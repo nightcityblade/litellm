@@ -2133,14 +2133,15 @@ class Router:
         stream: bool = False,
         **kwargs,
     ):
+        request_kwargs = {key: value for key, value in kwargs.items() if key != "_skip_scheduler"}
         try:
-            kwargs["model"] = model
-            kwargs["messages"] = messages
-            kwargs["stream"] = stream
-            kwargs["original_function"] = self._acompletion
+            request_kwargs["model"] = model
+            request_kwargs["messages"] = messages
+            request_kwargs["stream"] = stream
+            request_kwargs["original_function"] = self._acompletion
 
-            self._update_kwargs_before_fallbacks(model=model, kwargs=kwargs)
-            request_priority: Final = kwargs.get("priority") or self.default_priority
+            self._update_kwargs_before_fallbacks(model=model, kwargs=request_kwargs)
+            request_priority: Final = request_kwargs.get("priority", self.default_priority)
             start_time: Final = time.time()
             _is_prompt_management_model: Final = self._is_prompt_management_model(model)
 
@@ -2148,12 +2149,12 @@ class Router:
                 return await self._prompt_management_factory(
                     model=model,
                     messages=messages,
-                    kwargs=kwargs,
+                    kwargs=request_kwargs,
                 )
             if request_priority is not None and isinstance(request_priority, int):
-                response = await self.schedule_acompletion(**kwargs)
+                response = await self.schedule_acompletion(**{**request_kwargs, "priority": request_priority})
             else:
-                response = await self.async_function_with_fallbacks(**kwargs)
+                response = await self.async_function_with_fallbacks(**request_kwargs)
             end_time: Final = time.time()
             _duration: Final = end_time - start_time
             asyncio.create_task(
@@ -2163,7 +2164,7 @@ class Router:
                     call_type="acompletion",
                     start_time=start_time,
                     end_time=end_time,
-                    parent_otel_span=_get_parent_otel_span_from_kwargs(kwargs),
+                    parent_otel_span=_get_parent_otel_span_from_kwargs(request_kwargs),
                 )
             )
 
@@ -2172,7 +2173,7 @@ class Router:
             asyncio.create_task(
                 send_llm_exception_alert(
                     litellm_router_instance=self,
-                    request_kwargs=kwargs,
+                    request_kwargs=request_kwargs,
                     error_traceback_str=traceback.format_exc(),
                     original_exception=e,
                 )
@@ -3650,7 +3651,9 @@ class Router:
 
         if make_request:
             try:
-                _response: Final = await self.acompletion(model=model, messages=messages, stream=stream, **kwargs)
+                _response: Final = await self.async_function_with_fallbacks(
+                    model=model, messages=messages, stream=stream, **kwargs
+                )
                 _response._hidden_params.setdefault("additional_headers", {})
                 _response._hidden_params["additional_headers"].update({"x-litellm-request-prioritization-used": True})
                 return _response

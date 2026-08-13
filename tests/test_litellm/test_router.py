@@ -18,6 +18,29 @@ from litellm.exceptions import MidStreamFallbackError
 from litellm.integrations.custom_logger import CustomLogger
 
 
+@pytest.mark.asyncio
+async def test_acompletion_uses_default_priority_even_with_external_skip_flag():
+    router = litellm.Router(
+        model_list=[
+            {
+                "model_name": "test-model",
+                "litellm_params": {"model": "openai/test-model", "api_key": "test"},
+            }
+        ],
+        default_priority=10,
+    )
+
+    response = await router.acompletion(
+        model="test-model",
+        messages=[{"role": "user", "content": "Hello"}],
+        mock_response="Hello",
+        _skip_scheduler=True,
+    )
+
+    assert response.choices[0].message.content == "Hello"
+    assert response._hidden_params["additional_headers"]["x-litellm-request-prioritization-used"] is True
+
+
 def test_update_kwargs_does_not_mutate_defaults_and_merges_metadata():
     # initialize a real Router (env‑vars can be empty)
     router = litellm.Router(
