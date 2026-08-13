@@ -376,6 +376,28 @@ class TestCreateToolFunction:
 class TestBuildInputSchema:
     """Test that build_input_schema preserves original parameter names."""
 
+    def test_request_body_schema_ref(self):
+        """Test inline and FastAPI-style request body schemas."""
+        item_schema = {
+            "required": ["resourceType"],
+            "properties": {"resourceType": {"type": "string"}},
+        }
+        cases = (
+            (item_schema, {}),
+            (
+                {"$ref": "#/components/schemas/Item"},
+                {"schemas": {"Item": item_schema}},
+            ),
+        )
+
+        for request_schema, components in cases:
+            operation = {"requestBody": {"content": {"application/json": {"schema": request_schema}}}}
+            resolved = resolve_operation_params(operation, {"post": operation}, components)
+            body_schema = build_input_schema(resolved)["properties"]["body"]
+
+            assert body_schema["properties"] == item_schema["properties"]
+            assert body_schema["required"] == ["resourceType"]
+
     def test_original_parameter_names_preserved(self):
         """Test that original parameter names are preserved in input schema."""
         operation = {

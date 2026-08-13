@@ -8,6 +8,7 @@ import json
 import os
 import re
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from pathlib import PurePosixPath
 from typing import Any, Final, TypeAlias, TypedDict
 from urllib.parse import quote
@@ -52,6 +53,7 @@ _OpenAPIParameter: TypeAlias = Mapping[str, Any]
 
 class _OpenAPIJSONSchema(TypedDict, total=False):
     properties: Mapping[str, object]
+    required: Sequence[str]
 
 
 class _OpenAPIMediaType(TypedDict, total=False):
@@ -80,6 +82,7 @@ class _OpenAPIPathItem(TypedDict, total=False):
 
 class _OpenAPIComponents(TypedDict, total=False):
     parameters: Mapping[str, _OpenAPIParameter]
+    schemas: Mapping[str, _OpenAPIJSONSchema]
 
 
 # Store the base URL and headers globally
@@ -263,6 +266,15 @@ def resolve_operation_params(
     merged: Final = [p for p in path_level if (p["name"], p.get("in")) not in op_keys] + op_level
     result: Final = dict(operation)
     result["parameters"] = merged
+    request_body = operation.get("requestBody", {})
+    json_content = request_body.get("content", {}).get("application/json", {})
+    schema_ref = json_content.get("schema", {}).get("$ref", "")
+    if schema_ref.startswith("#/components/schemas/"):
+        resolved_schema = components.get("schemas", {}).get(schema_ref.rsplit("/", 1)[-1])
+        if resolved_schema is not None:
+            resolved_body = deepcopy(request_body)
+            resolved_body["content"]["application/json"]["schema"] = resolved_schema
+            result["requestBody"] = resolved_body
     return result
 
 
@@ -326,6 +338,7 @@ def build_input_schema(operation: Mapping[str, Any]) -> dict[str, Any]:
                 "type": "object",
                 "description": request_body.get("description", "Request body"),
                 "properties": schema.get("properties", {}),
+                "required": schema.get("required", []),
             }
             if request_body.get("required", False):
                 required.append("body")
@@ -493,12 +506,13 @@ def create_tool_function(
 def register_tools_from_openapi(spec: Mapping[str, Any], base_url: str) -> None:
     """Register MCP tools from OpenAPI specification."""
     paths: Final[Mapping[str, Mapping[str, Any]]] = spec.get("paths", {})
+    components: Final[_OpenAPIComponents] = spec.get("components", {})
     used_names: Final = set()
 
     for path, path_item in paths.items():
         for method in ["get", "post", "put", "delete", "patch"]:
             if method in path_item:
-                operation = path_item[method]
+                operation = resolve_operation_params(path_item[method], path_item, components)
 
                 # Generate tool name. Sanitize to ^[a-zA-Z0-9_-]+$ (lowercase)
                 # so the resulting name is valid across OpenAI/Anthropic/Bedrock.
