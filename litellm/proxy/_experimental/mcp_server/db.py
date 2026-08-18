@@ -1017,6 +1017,15 @@ async def update_mcp_server(
     issuer_changed: Final = bool(
         issuer_provided and old_issuer is not None and _blank_to_none(data_dict.get("issuer")) != old_issuer
     )
+    preserve_delegate_oauth_fields: Final = bool(
+        issuer_changed
+        and not auth_type_changed
+        and not url_changed
+        and (
+            data_dict.get("delegate_auth_to_upstream") is True
+            or getattr(existing, "delegate_auth_to_upstream", False) is True
+        )
+    )
 
     # Clear stale credentials when auth_type changes but no new credentials provided
     if auth_type_changed and "credentials" not in data_dict:
@@ -1031,7 +1040,13 @@ async def update_mcp_server(
             {
                 field: None
                 for field in _AUTH_FLOW_SCOPED_FIELDS
-                if field not in data_dict or data_dict[field] == getattr(existing, field, None)
+                if field not in data_dict
+                or (
+                    data_dict[field] == getattr(existing, field, None)
+                    and not (
+                        preserve_delegate_oauth_fields and field in ("authorization_url", "token_url", "oauth2_flow")
+                    )
+                )
             }
         )
 

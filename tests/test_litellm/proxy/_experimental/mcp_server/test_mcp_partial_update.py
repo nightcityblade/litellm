@@ -322,6 +322,37 @@ async def test_clearing_pinned_issuer_clears_stale_oauth_endpoints():
 
 
 @pytest.mark.asyncio
+async def test_clearing_delegate_issuer_keeps_explicit_oauth_fields():
+    mock_prisma = _mock_prisma()
+    existing = MagicMock()
+    existing.auth_type = "oauth2"
+    existing.url = "https://same.example.com/mcp"
+    existing.credentials = None
+    existing.issuer = "https://old-idp.example.com"
+    existing.authorization_url = "https://old-idp.example.com/authorize"
+    existing.token_url = "https://old-idp.example.com/token"
+    existing.oauth2_flow = "authorization_code"
+    existing.delegate_auth_to_upstream = True
+    mock_prisma.db.litellm_mcpservertable.find_unique = AsyncMock(return_value=existing)
+
+    data = UpdateMCPServerRequest(
+        server_id="my-test-server",
+        auth_type="oauth2",
+        issuer="",
+        authorization_url=existing.authorization_url,
+        token_url=existing.token_url,
+        oauth2_flow="authorization_code",
+        delegate_auth_to_upstream=True,
+    )
+    await update_mcp_server(mock_prisma, data, "test-user")
+    data_dict = mock_prisma.db.litellm_mcpservertable.update.call_args[1]["data"]
+
+    assert data_dict["authorization_url"] == existing.authorization_url
+    assert data_dict["token_url"] == existing.token_url
+    assert data_dict["oauth2_flow"] == "authorization_code"
+
+
+@pytest.mark.asyncio
 async def test_repointing_pinned_issuer_clears_stale_endpoints_keeps_new_issuer():
     """Re-pointing the issuer to a different authorization server invalidates the old issuer's
     endpoints while keeping the new issuer the admin submitted."""
