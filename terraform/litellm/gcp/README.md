@@ -282,6 +282,23 @@ example files.
 
 ## Quick start
 
+If your project enforces the
+[`constraints/compute.managed.requireOsConfig`](https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints)
+organization policy, verify that VM Manager is enabled in project metadata
+before applying the module. Existing projects may not have the required
+metadata even when the policy is already enforced, which causes creation of
+the Serverless VPC Access connector to fail with an organization-policy error.
+
+```bash
+gcloud compute project-info add-metadata \
+  --project PROJECT_ID \
+  --metadata=enable-osconfig=TRUE
+```
+
+See Google's [VM Manager setup guide](https://cloud.google.com/compute/vm-manager/docs/setup#set_metadata_values)
+for details. The module does not manage this project-wide metadata because it
+may be owned by another Terraform configuration.
+
 ```bash
 cd terraform/litellm/gcp/examples/default
 cp terraform.tfvars.example terraform.tfvars
