@@ -4899,7 +4899,11 @@ class TestPatchModelBlockedAuthGate:
             patch("litellm.proxy.proxy_server.premium_user", True),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
-                new=AsyncMock(return_value=None),
+                new=AsyncMock(
+                    side_effect=HTTPException(
+                        status_code=403, detail="This team does not allow you to manage your own auto routers."
+                    )
+                ),
             ),
         ):
             with pytest.raises(Exception, match="Only proxy admins can change a model's blocked flag\\.") as exc_info:
