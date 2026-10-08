@@ -1,4 +1,4 @@
-from typing import List, cast
+from typing import Final, List, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -477,6 +477,21 @@ def test_mistral_streaming_chunk_preserves_thinking_blocks():
     assert delta.thinking_blocks[0]["signature"] == "mistral"
     assert delta.reasoning_content == "Working it out."
     assert delta.content == " Hello"
+
+
+def test_mistral_content_lists_keep_text_and_reference_order() -> None:
+    content_blocks: Final = [
+        {"type": "text", "text": "The sky is blue"},
+        {"type": "reference", "reference_ids": ["doc1", "doc2"]},
+        {"type": "text", "text": "."},
+    ]
+    response_data: Final = {"choices": [{"message": {"content": content_blocks}}]}
+
+    transformed: Final = MistralConfig._handle_content_list_to_str_conversion(response_data)
+    streamed_text: Final = MistralChatResponseIterator._normalize_content_blocks(content_blocks)[0]
+
+    assert transformed["choices"][0]["message"]["content"] == "The sky is blue[doc1][doc2]."
+    assert streamed_text == "The sky is blue[doc1][doc2]."
 
 
 class TestMistralNameHandling:

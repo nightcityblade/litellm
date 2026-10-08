@@ -52,6 +52,24 @@ def _accepted_reasoning_effort(model: str, requested: str, custom_llm_provider: 
     return accepted
 
 
+def _reference_id_to_text(reference_id: object) -> str:
+    return f"[{reference_id}]" if isinstance(reference_id, str) else ""
+
+
+def _content_block_to_text(block: Mapping[str, object]) -> str:
+    block_type: Final = block.get("type")
+    if block_type == "text":
+        text: Final = block.get("text")
+        return text if isinstance(text, str) else ""
+    if block_type == "reference":
+        reference_ids: Final = block.get("reference_ids")
+        if isinstance(reference_ids, list):
+            return "".join(
+                map(_reference_id_to_text, reference_ids)  # pyright: ignore[reportUnknownArgumentType]  # Provider JSON is untyped
+            )
+    return ""
+
+
 class MistralConfig(OpenAIGPTConfig):
     """
     Reference: https://docs.mistral.ai/api/
@@ -537,7 +555,11 @@ class MistralConfig(OpenAIGPTConfig):
                     # Only process if content is a list
                     if isinstance(content, list):
                         thinking_content = ""
-                        text_content = ""
+                        text_content = "".join(
+                            _content_block_to_text(block)  # pyright: ignore[reportUnknownArgumentType]  # Provider JSON is untyped
+                            for block in content
+                            if isinstance(block, Mapping)
+                        )
 
                         # Process each content block
                         for block in content:
@@ -548,8 +570,6 @@ class MistralConfig(OpenAIGPTConfig):
                                     if thinking_block.get("type") == "text":
                                         thinking_texts.append(thinking_block.get("text", ""))
                                 thinking_content = "\n".join(thinking_texts)
-                            elif block.get("type") == "text":
-                                text_content = block.get("text", "")
 
                         # Set the extracted content
                         choice["message"]["content"] = text_content
@@ -694,8 +714,10 @@ class MistralChatResponseIterator(OpenAIChatCompletionStreamingHandler):
                             "signature": "mistral",
                         }
                     )
-            elif block_type == "text":
-                text_segments.append(block.get("text", ""))
+            elif block_type in ("text", "reference"):
+                text_segments.append(
+                    _content_block_to_text(block)  # pyright: ignore[reportUnknownArgumentType]  # Provider JSON is untyped
+                )
 
         normalized_text: Final = "".join(text_segments) if text_segments else None
         reasoning_content: Final = "\n".join(reasoning_segments) if reasoning_segments else None
