@@ -9462,13 +9462,21 @@ class TestStreamingResponseHeadersFollowFallback:
         return _Stream()
 
     @pytest.mark.asyncio
-    async def test_streaming_headers_name_the_deployment_that_served(self, monkeypatch):
+    @pytest.mark.parametrize(
+        ("route_type", "responses_stream_errors"),
+        [("acompletion", False), ("aresponses", True)],
+    )
+    async def test_streaming_headers_name_the_deployment_that_served(
+        self, monkeypatch, route_type, responses_stream_errors
+    ):
         """A pre-first-chunk fallback repoints the stream while the headers are still
         uncommitted, so the published headers must describe the fallback, not the attempt
         the Router picked first."""
         stream = self._fallback_adopting_stream()
 
         def select_data_generator(**kwargs):
+            assert kwargs["responses_stream_errors"] is responses_stream_errors
+
             async def generator():
                 stream.adopt()
                 yield 'data: {"choices": [{"delta": {"content": "OK"}}]}\n\n'
@@ -9510,7 +9518,7 @@ class TestStreamingResponseHeadersFollowFallback:
             request=Request(scope={"type": "http", "headers": []}),
             fastapi_response=Response(),
             user_api_key_dict=ProxyUserAPIKeyAuth(api_key="sk-test"),
-            route_type="acompletion",
+            route_type=route_type,
             proxy_logging_obj=proxy_logging_obj,
             general_settings={},
             proxy_config=MagicMock(spec=ProxyConfig),

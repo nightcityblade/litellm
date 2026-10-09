@@ -2828,6 +2828,7 @@ class ProxyBaseLLMRequestProcessing:
                         user_api_key_dict=user_api_key_dict,
                         request_data=self.data,
                         request=request,
+                        responses_stream_errors=route_type == "aresponses",
                     )
                     if route_type == "aresponses":
                         selected_data_generator = (
